@@ -30,20 +30,19 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.List;
-import java.util.Map;
 
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.any;
 
 @RunWith(MockitoJUnitRunner.class)
-public class CloudwatchDashboardServiceTest {
+public class CloudWatchDashboardServiceTest {
     @Mock
     private AmazonCloudWatch cw;
     @Mock
     private CloudWatchConfiguration configuration;
     @InjectMocks
-    private CloudwatchDashboardService service;
+    private CloudWatchDashboardService service;
 
 
     @Test
@@ -52,7 +51,7 @@ public class CloudwatchDashboardServiceTest {
         Mockito.when(configuration.isEnabled()).thenReturn(true);
 
         Mockito.when(cw.getDashboard(any(GetDashboardRequest.class))).thenReturn(createDasboardResult());
-        setFinalStatic(CloudwatchDashboardService.class.getDeclaredField("instanceId"), "instanceId-NOT_EXISTENT");
+        setFinalStatic(CloudWatchDashboardService.class.getDeclaredField("instanceId"), "instanceId-NOT_EXISTENT");
 
         service.createDashboard();
 
@@ -65,7 +64,7 @@ public class CloudwatchDashboardServiceTest {
         Mockito.when(configuration.getDashboardName()).thenReturn("test-dashboard");
         Mockito.when(configuration.isEnabled()).thenReturn(true);
         Mockito.when(cw.getDashboard(any(GetDashboardRequest.class))).thenReturn(createDasboardResult());
-        setFinalStatic(CloudwatchDashboardService.class.getDeclaredField("instanceId"), "i-023cf1c0d42af8215");
+        setFinalStatic(CloudWatchDashboardService.class.getDeclaredField("instanceId"), "i-023cf1c0d42af8215");
 
         service.removeWidgets("i-023cf1c0d42af8215");
 
@@ -74,7 +73,7 @@ public class CloudwatchDashboardServiceTest {
 
     @Test
     public void createWidgets() throws IOException {
-        List<CloudwatchDashboardService.Widget> widgets = service.createWidgets();
+        List<CloudWatchDashboardService.Widget> widgets = service.createWidgets();
         assertThat(widgets.size(), is(4));
         assertThat(widgets.get(0).properties.metrics.get(0).get(1), is("OsCpuPercent"));
     }

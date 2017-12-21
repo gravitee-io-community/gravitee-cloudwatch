@@ -45,20 +45,19 @@ import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
 
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-public class CloudwatchDashboardService extends AbstractService implements Runnable {
-    private final Logger logger = LoggerFactory.getLogger(CloudwatchDashboardService.class);
+public class CloudWatchDashboardService extends AbstractService implements Runnable {
+    private final Logger logger = LoggerFactory.getLogger(CloudWatchDashboardService.class);
     private AmazonCloudWatch cw = AmazonCloudWatchClientBuilder.standard().withClientConfiguration(getClientConfiguration()).build();
     private final AmazonSQS sqs = AmazonSQSClientBuilder.standard().withClientConfiguration(getClientConfiguration()).build();
     private final AmazonAutoScaling scaling = AmazonAutoScalingClientBuilder.standard().withClientConfiguration(getClientConfiguration()).build();
     private static ObjectMapper mapper = new ObjectMapper();
     private static String instanceId = EC2MetadataUtils.getInstanceId();
+    private static final String API_GATEWAY_TERMINATING_QUEUE = "APIGatewayTerminatingQueue";
 
     static {
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -126,7 +125,7 @@ public class CloudwatchDashboardService extends AbstractService implements Runna
 
             logger.debug("listQueuesResult {}", listQueuesResult);
 
-            Optional<String> instanceTerminatingQueue = listQueuesResult.getQueueUrls().stream().filter(p -> p.contains("InstanceTerminatingQueue")).findFirst();
+            Optional<String> instanceTerminatingQueue = listQueuesResult.getQueueUrls().stream().filter(p -> p.contains(API_GATEWAY_TERMINATING_QUEUE)).findFirst();
             if (instanceTerminatingQueue.isPresent()) {
                 ReceiveMessageRequest receive_request = new ReceiveMessageRequest()
                         .withQueueUrl(instanceTerminatingQueue.get())
