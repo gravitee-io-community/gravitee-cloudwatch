@@ -15,21 +15,17 @@
  */
 package io.gravitee.service.cloudwatch;
 
-import com.amazonaws.ClientConfiguration;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.autoscaling.AmazonAutoScaling;
-import com.amazonaws.services.autoscaling.AmazonAutoScalingClientBuilder;
 import com.amazonaws.services.autoscaling.model.CompleteLifecycleActionRequest;
 import com.amazonaws.services.autoscaling.model.CompleteLifecycleActionResult;
 import com.amazonaws.services.cloudwatch.AmazonCloudWatch;
-import com.amazonaws.services.cloudwatch.AmazonCloudWatchClientBuilder;
 import com.amazonaws.services.cloudwatch.model.GetDashboardRequest;
 import com.amazonaws.services.cloudwatch.model.GetDashboardResult;
 import com.amazonaws.services.cloudwatch.model.PutDashboardRequest;
 import com.amazonaws.services.cloudwatch.model.ResourceNotFoundException;
 import com.amazonaws.services.sqs.AmazonSQS;
-import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
 import com.amazonaws.services.sqs.model.ListQueuesResult;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
 import com.amazonaws.services.sqs.model.ReceiveMessageResult;
@@ -47,45 +43,27 @@ import org.springframework.scheduling.support.CronTrigger;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 public class CloudWatchDashboardService extends AbstractService implements Runnable {
     private final Logger logger = LoggerFactory.getLogger(CloudWatchDashboardService.class);
-    private AmazonCloudWatch cw = AmazonCloudWatchClientBuilder.standard().withClientConfiguration(getClientConfiguration()).build();
-    private final AmazonSQS sqs = AmazonSQSClientBuilder.standard().withClientConfiguration(getClientConfiguration()).build();
-    private final AmazonAutoScaling scaling = AmazonAutoScalingClientBuilder.standard().withClientConfiguration(getClientConfiguration()).build();
     private static ObjectMapper mapper = new ObjectMapper();
     private static String instanceId = EC2MetadataUtils.getInstanceId();
-    private static final String API_GATEWAY_TERMINATING_QUEUE = "APIGatewayTerminatingQueue";
 
-    static {
-        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    }
+    @Autowired
+    private AmazonCloudWatch cloudWatch;
+
+    @Autowired
+    private AmazonSQS sqs;
+
+    @Autowired
+    private AmazonAutoScaling autoScaling;
+
     @Autowired
     private CloudWatchConfiguration configuration;
 
     @Autowired
     private TaskScheduler scheduler;
-
-
-    public static ClientConfiguration getClientConfiguration() {
-        ClientConfiguration clientConfiguration = new ClientConfiguration();
-        Map<String, String> env = System.getenv();
-        String proxy = env.get("HTTP_PROXY");
-
-        if (proxy != null) {
-            String[] split = proxy.split("(?=:[0-9])");
-
-            String host = split[0].replace("http://", "");
-            String port = split[1].replace(":", "");
-
-            clientConfiguration.setProxyHost(host);
-            clientConfiguration.setProxyPort(Integer.parseInt(port));
-        }
-
-        return clientConfiguration;
-    }
 
     static {
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -93,7 +71,7 @@ public class CloudWatchDashboardService extends AbstractService implements Runna
 
     @Override
     protected void doStart() throws Exception {
-        logger.info("doStart start with configuration {}",configuration.isEnabled());
+        logger.info("doStart start with configuration {}", configuration.isEnabled());
 
         if (configuration.isEnabled()) {
             super.doStart();
@@ -110,6 +88,13 @@ public class CloudWatchDashboardService extends AbstractService implements Runna
 
     @Override
     protected void doStop() throws Exception {
+        logger.debug("doStop start, testing connection");
+
+        ListQueuesResult listQueuesResult = sqs.listQueues();
+        logger.debug("listQueuesResult {}", listQueuesResult);
+        
+        logger.debug("doStop start");
+
     }
 
     @Override
@@ -118,19 +103,20 @@ public class CloudWatchDashboardService extends AbstractService implements Runna
     }
 
     private void pollForMessages() {
-        logger.debug("pollForMessages start with configuration {}",configuration.isEnabled());
+        logger.debug("pollForMessages start with configuration {}", configuration.isEnabled());
 
         if (configuration.isEnabled()) {
             ListQueuesResult listQueuesResult = sqs.listQueues();
 
             logger.debug("listQueuesResult {}", listQueuesResult);
 
-            Optional<String> instanceTerminatingQueue = listQueuesResult.getQueueUrls().stream().filter(p -> p.contains(API_GATEWAY_TERMINATING_QUEUE)).findFirst();
-            if (instanceTerminatingQueue.isPresent()) {
-                ReceiveMessageRequest receive_request = new ReceiveMessageRequest()
-                        .withQueueUrl(instanceTerminatingQueue.get())
+            Optional<String> apiGatewayTerminatingQueue = listQueuesResult.getQueueUrls().stream().filter(p -> p.contains(configuration.getLifecycleQueueName())).findFirst();
+
+            if (apiGatewayTerminatingQueue.isPresent()) {
+                ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest()
+                        .withQueueUrl(apiGatewayTerminatingQueue.get())
                         .withWaitTimeSeconds(5);
-                ReceiveMessageResult receiveMessageResult = sqs.receiveMessage(receive_request);
+                ReceiveMessageResult receiveMessageResult = sqs.receiveMessage(receiveMessageRequest);
 
                 logger.debug("receiveMessageResult {}", receiveMessageResult);
 
@@ -144,19 +130,19 @@ public class CloudWatchDashboardService extends AbstractService implements Runna
 
                         if ("autoscaling:EC2_INSTANCE_TERMINATING".equals(content.LifecycleTransition)) {
                             removeWidgets(content.EC2InstanceId);
+
+                            logger.debug("deleting message from queue");
+                            sqs.deleteMessage(apiGatewayTerminatingQueue.get(), p.getReceiptHandle());
+
+                            logger.debug("sending complete action to autoscaling AWS for CONTINUE removing instance from the scaling group");
+
+                            CompleteLifecycleActionRequest request = new CompleteLifecycleActionRequest().withLifecycleHookName(content.LifecycleHookName)
+                                    .withAutoScalingGroupName(content.AutoScalingGroupName).withLifecycleActionToken(content.LifecycleActionToken)
+                                    .withLifecycleActionResult("CONTINUE");
+                            CompleteLifecycleActionResult response = autoScaling.completeLifecycleAction(request);
+
+                            logger.debug("response {}", response);
                         }
-
-                        logger.debug("deleting message from queue");
-                        sqs.deleteMessage(instanceTerminatingQueue.get(), p.getReceiptHandle());
-
-                        logger.debug("sending complete action to autoscaling AWS for CONTINUE removing instance from the scaling group");
-
-                        CompleteLifecycleActionRequest request = new CompleteLifecycleActionRequest().withLifecycleHookName(content.LifecycleHookName)
-                                .withAutoScalingGroupName(content.AutoScalingGroupName).withLifecycleActionToken(content.LifecycleActionToken)
-                                .withLifecycleActionResult("CONTINUE");
-                        CompleteLifecycleActionResult response = scaling.completeLifecycleAction(request);
-
-                        logger.debug("response {}", response);
 
                     } catch (IOException e) {
                         logger.error("Something went wrong deserializing the message", e);
@@ -173,7 +159,7 @@ public class CloudWatchDashboardService extends AbstractService implements Runna
         GetDashboardResult dashboard = new GetDashboardResult().withDashboardBody("{}");
 
         try {
-            dashboard = cw.getDashboard(new GetDashboardRequest().withDashboardName(dashboardName));
+            dashboard = cloudWatch.getDashboard(new GetDashboardRequest().withDashboardName(dashboardName));
         } catch (ResourceNotFoundException e) {
             logger.debug("unable to find dashboard with name dashboardName {}, creating new one", dashboardName);
         }
@@ -188,7 +174,7 @@ public class CloudWatchDashboardService extends AbstractService implements Runna
                 List<Widget> widgetList = createWidgets();
                 widgets.widgets.addAll(widgetList);
 
-                cw.putDashboard(new PutDashboardRequest().withDashboardName(dashboardName).withDashboardBody(mapper.writeValueAsString(widgets)));
+                cloudWatch.putDashboard(new PutDashboardRequest().withDashboardName(dashboardName).withDashboardBody(mapper.writeValueAsString(widgets)));
             }
         } catch (Exception e) {
             logger.error("Unable to add widgets for instanceId {}", instanceId, e);
@@ -203,7 +189,7 @@ public class CloudWatchDashboardService extends AbstractService implements Runna
         logger.debug("removing widgets for this instanceId {} if any for dashboardName {}", instanceId, dashboardName);
 
         try {
-            GetDashboardResult dashboard = cw.getDashboard(new GetDashboardRequest().withDashboardName(dashboardName));
+            GetDashboardResult dashboard = cloudWatch.getDashboard(new GetDashboardRequest().withDashboardName(dashboardName));
             String dashboardBody = dashboard.getDashboardBody();
 
             if (dashboardBody.contains(instanceId)) {
@@ -216,7 +202,7 @@ public class CloudWatchDashboardService extends AbstractService implements Runna
 
                 logger.debug("Actual widgets number after removing  them for this instanceId {}", widgets.widgets.size());
 
-                cw.putDashboard(new PutDashboardRequest().withDashboardName(dashboardName).withDashboardBody(mapper.writeValueAsString(widgets)));
+                cloudWatch.putDashboard(new PutDashboardRequest().withDashboardName(dashboardName).withDashboardBody(mapper.writeValueAsString(widgets)));
             }
         } catch (ResourceNotFoundException e) {
             logger.warn("unable to find dashboard with name dashboardName {}, pay attention to the name in the gravitee.yaml file under ", dashboardName);
