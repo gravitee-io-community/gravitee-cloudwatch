@@ -26,7 +26,7 @@ Once built, a plugin archive file is generated in : target/gravitee-service-clou
 
 ## Deploy
 
-Just unzip the plugins archive in your gravitee plugin workspace ( default is : ${node.home}/plugins )
+Just unzip the plugins archive in your gravitee plugin workspace ( default is : ${gravitee.home}/plugins )
 
 
 ## Configuration 
@@ -39,10 +39,24 @@ Example :
 ```YAML
 reporters:
   cloudwatch:
-    enabled: true    
+    enabled: true
+    awsRegion: ${ds.aws.awsRegion}
+    awsAccessKeyId: ${ds.aws.awsAccessKeyId}
+    awsSecretKey: ${ds.aws.awsSecretKey} 
     
 services:
   cloudwatch:
-    enabled: true
-    dashboardName: dashboardName    
+    enabled: true # Is the service enabled or not (default to false)
+    dashboardName: API-Gateway-Dashboard
+    lifecycleQueueName: lifecycleQueueName
+    awsRegion: ${ds.aws.awsRegion}
+    awsAccessKeyId: ${ds.aws.awsAccessKeyId}
+    awsSecretKey: ${ds.aws.awsSecretKey} 
+    
+# Referenced properties
+ds:
+  aws:
+    awsRegion: your aws account region
+    awsAccessKeyId: your aws access key id
+    awsSecretKey: your aws secret key
 ```
