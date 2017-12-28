@@ -45,7 +45,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-public class CloudWatchDashboardService extends AbstractService implements Runnable {
+    public class CloudWatchDashboardService extends AbstractService implements Runnable {
     private final Logger logger = LoggerFactory.getLogger(CloudWatchDashboardService.class);
     private static ObjectMapper mapper = new ObjectMapper();
     private static String instanceId = EC2MetadataUtils.getInstanceId();
@@ -109,6 +109,7 @@ public class CloudWatchDashboardService extends AbstractService implements Runna
             ListQueuesResult listQueuesResult = sqs.listQueues();
 
             logger.debug("listQueuesResult {}", listQueuesResult);
+            logger.debug("searching for queue with name {}", configuration.getLifecycleQueueName());
 
             Optional<String> apiGatewayTerminatingQueue = listQueuesResult.getQueueUrls().stream().filter(p -> p.contains(configuration.getLifecycleQueueName())).findFirst();
 

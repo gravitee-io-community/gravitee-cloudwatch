@@ -52,7 +52,7 @@ public class CloudWatchConfiguration {
     @Value("${services.cloudwatch.dashboardName:API-Gateway-Dashboard}")
     private String dashboardName;
 
-    @Value("${services.cloudwatch.dashboardName:lifecycleQueueName}")
+    @Value("${services.cloudwatch.lifecycleQueueName:lifecycleQueueName}")
     private String lifecycleQueueName;
 
     @Value("${services.cloudwatch.enabled:false}")
