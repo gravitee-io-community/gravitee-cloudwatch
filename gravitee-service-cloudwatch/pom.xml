@@ -28,7 +28,7 @@
     </parent>
 
     <artifactId>gravitee-service-cloudwatch</artifactId>
-    <name>Gravitee.io APIM - Service - CloudWatch</name>
+    <name>Gravitee.io - Service - CloudWatch</name>
 
 
 

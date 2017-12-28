@@ -28,7 +28,7 @@
     </parent>
 
     <artifactId>gravitee-reporter-cloudwatch</artifactId>
-    <name>Gravitee.io APIM - Reporter - CloudWatch</name>
+    <name>Gravitee.io - Reporter - CloudWatch</name>
 
 
     <dependencies>
